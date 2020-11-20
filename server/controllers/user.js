@@ -8,46 +8,126 @@ FileName : app.js
 let express = require('express');
 let router = express.Router();
 let mongoose = require('mongoose');
+let passport = require('passport');
 
 //let jwt = require('jsonwebtoken');
 
 // create a reference to the model
-let User = require('../models/user');
+let userModel = require('../models/user');
+let User = userModel.User;
+
 
 module.exports.displayLoginPage = (req, res, next) => {
-    res.render('user-login', 
-            {title: 'User Login', 
-            displayName: req.user ? req.user.displayName : ''});   
+    if(!req.user)
+    {
+        res.render('user-login',
+        {
+            title: "Login",
+            messages: req.flash('loginMessage'),
+            displayName: req.user ? req.user.displayName: ''
+        });
+    }
+    else
+    {
+        res.redirect('/');
+    }
 }
 
 module.exports.displayRegisterPage = (req, res, next) => {
-    res.render('user-register', {title: 'Register', 
-    displayName: req.user ? req.user.displayName : ''})          
+    
+    if(!req.user)
+    {
+        res.render('user-register',
+        {
+            title: 'Register',
+            messages: req.flash('registerMessage'),
+            displayName: req.user ? req.user.displayName : ''
+        });
+    }
+    else
+    {
+        //if the user already exists
+        return res.redirect('/');
+    }
 }
 
 module.exports.processRegisterPage = (req, res, next) => {
     console.log('recieved the request....');
-    console.log(req.body.title);
-    console.log(req.body.subtitle);
+    console.log(req.body.username);
+    console.log(req.body.displayname);
 
     let newUser = User({
         "username": req.body.username,
-        "password": req.body.password,
         "email": req.body.email,
         "displayname": req.body.displayname
     });
 
-    User.create(newUser, (err, User) =>{
+    User.register(newUser, req.body.password, (err) => {
         if(err)
         {
-            console.log(err);
-            res.end(err);
+            console.log("Error: Inserting New User");
+            if(err.name == "UserExistsError")
+            {
+                req.flash(
+                    'registerMessage',
+                    'Registration Error: User Already Exists!'
+                );
+                console.log('Error: User Already Exists!')
+            }
+            return res.render('user-register', {
+                title: 'Register',
+                messages: req.flash('registerMessage'),
+                displayName: req.user ? req.user.displayName : ''
+            });
         }
         else
         {
-            // refresh the list
-            res.redirect('/survey-list');
+           return passport.authenticate('local')(req, res, () => {
+               res.redirect('/survey-list');
+           });
         }
     });
 
+
+
+}
+
+
+module.exports.processLoginPage = (req, res, next) => {
+    console.log('recieved the request....');
+    console.log(req.body.title);
+    console.log(req.body.subtitle);
+
+    passport.authenticate('local', 
+    (err, user, info) => {
+        //server err?
+        if(err)
+        {
+            return next(err);
+        }
+        //is there a user login error?
+        if(!user)
+        {
+            console.log(user);
+            console.log(err);
+            req.flash('loginMessage', 'Authentication Error');
+            return res.redirect('/user/login');
+        }
+        req.login(user, (err) => {
+            //server err?
+            if(err)
+            {
+                return next(err);
+            }
+
+            res.redirect('/survey-list');
+        });
+    })(req, res, next);
+
+}
+
+
+module.exports.performLogout = (req, res, next) => {
+    req.logout();
+    res.redirect('/');
 }
